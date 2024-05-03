@@ -40,6 +40,9 @@ class GetVisualEmbeddings:
         box_features, features_list = self.get_box_features(features, proposals)
         pred_class_logits, pred_proposal_deltas = self.get_prediction_logits(features_list, proposals)
         boxes, scores, image_shapes = self.get_box_scores(pred_class_logits, pred_proposal_deltas, proposals)
+
+        del image_shapes, features_list, pred_class_logits, pred_proposal_deltas        
+        
         output_boxes = [self.get_output_boxes(boxes[i], batched_inputs[i], proposals[i].image_size) for i in range(len(proposals))]
         temp = [self.select_boxes(self.cfg, output_boxes[i], scores[i]) for i in range(len(scores))]
 
