@@ -7,6 +7,7 @@ from copy import deepcopy
 from PIL import Image
 from io import BytesIO
 import gc
+from tqdm import tqdm
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.structures.image_list import ImageList
@@ -28,37 +29,44 @@ class GetVisualEmbeddings:
         self.model = self.get_model(self.cfg)
 
 
-    def get_visual_embeddings(self, df):
-        
-        img_list = self.bytes_to_images(df)
-        del df
-        gc.collect()
+    def get_visual_embeddings(self, df, batch_size):
 
-        images, batched_inputs = self.prepare_image_inputs(self.cfg, img_list)
-        del img_list
-        gc.collect()
+        df['batch'] = np.arange(0, len(df)) // batch_size
+        output_visual_embeddings = []
 
-        features = self.get_features(images)
-        proposals = self.get_proposals(images, features)
-        box_features, features_list = self.get_box_features(features, proposals)
-        pred_class_logits, pred_proposal_deltas = self.get_prediction_logits(features_list, proposals)
-        boxes, scores, image_shapes = self.get_box_scores(pred_class_logits, pred_proposal_deltas, proposals)
+        for _, batch in tqdm(df.groupby('batch')):
+            
+            img_list = self.bytes_to_images(batch)
+            del batch
+            gc.collect()
 
-        del image_shapes, features_list, pred_class_logits, pred_proposal_deltas        
-        gc.collect()
-        
-        output_boxes = [self.get_output_boxes(boxes[i], batched_inputs[i], proposals[i].image_size) for i in range(len(proposals))]
-        temp = [self.select_boxes(self.cfg, output_boxes[i], scores[i]) for i in range(len(scores))]
+            images, batched_inputs = self.prepare_image_inputs(self.cfg, img_list)
+            del img_list
+            gc.collect()
 
-        keep_boxes, max_conf = [],[]
-        for keep_box, mx_conf in temp:
-            keep_boxes.append(keep_box)
-            max_conf.append(mx_conf)
+            features = self.get_features(images)
+            proposals = self.get_proposals(images, features)
+            box_features, features_list = self.get_box_features(features, proposals)
+            pred_class_logits, pred_proposal_deltas = self.get_prediction_logits(features_list, proposals)
+            boxes, scores, image_shapes = self.get_box_scores(pred_class_logits, pred_proposal_deltas, proposals)
 
-        keep_boxes = [self.filter_boxes(keep_box, mx_conf, self.MIN_BOXES, self.MAX_BOXES) for keep_box, mx_conf in zip(keep_boxes, max_conf)]
-        visual_embeds = [self.get_visual_embeds(box_feature, keep_box) for box_feature, keep_box in zip(box_features, keep_boxes)]
+            del image_shapes, features_list, pred_class_logits, pred_proposal_deltas        
+            gc.collect()
 
-        return visual_embeds
+            output_boxes = [self.get_output_boxes(boxes[i], batched_inputs[i], proposals[i].image_size) for i in range(len(proposals))]
+            temp = [self.select_boxes(self.cfg, output_boxes[i], scores[i]) for i in range(len(scores))]
+
+            keep_boxes, max_conf = [],[]
+            for keep_box, mx_conf in temp:
+                keep_boxes.append(keep_box)
+                max_conf.append(mx_conf)
+
+            keep_boxes = [self.filter_boxes(keep_box, mx_conf, self.MIN_BOXES, self.MAX_BOXES) for keep_box, mx_conf in zip(keep_boxes, max_conf)]
+            visual_embeds = [self.get_visual_embeds(box_feature, keep_box) for box_feature, keep_box in zip(box_features, keep_boxes)]
+
+            output_visual_embeddings.extend(visual_embeds)
+
+        return output_visual_embeddings
 
     def load_config_and_model_weights(self, cfg_path, cuda=True):
         cfg = get_cfg()
