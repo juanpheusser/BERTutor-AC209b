@@ -70,7 +70,6 @@ class GetVisualEmbeddings:
             gc.collect()
             torch.cuda.empty_cache()
 
-
         return output_visual_embeddings
 
     def load_config_and_model_weights(self, cfg_path, cuda=True):
@@ -147,7 +146,7 @@ class GetVisualEmbeddings:
 
         return features
     
-    def plot_features_random_img(images, features):
+    def plot_features_random_img(self, images, features):
 
         image_index = np.random.randint(0, len(images))
         image = images[image_index]
@@ -156,7 +155,7 @@ class GetVisualEmbeddings:
         plt.show()
         for key in features.keys():
             print(features[key].shape)
-            plt.imshow(features[key][0,0,:,:].squeeze().cpu().detach().numpy(), cmap='jet')
+            plt.imshow(features[key][0,0,:,:].squeeze().to(self.model.device).detach().numpy(), cmap='jet')
             plt.show()
 
     def get_proposals(self, images, features):
@@ -217,8 +216,8 @@ class GetVisualEmbeddings:
         cls_boxes = output_boxes.tensor.detach().reshape(1000,80,4)
         max_conf = torch.zeros((cls_boxes.shape[0]))
         for cls_ind in range(0, cls_prob.shape[1]-1):
-            cls_scores = cls_prob[:, cls_ind+1].cpu()
-            det_boxes = cls_boxes[:,cls_ind,:].cpu()
+            cls_scores = cls_prob[:, cls_ind+1].to(self.model.device)
+            det_boxes = cls_boxes[:,cls_ind,:].to(self.model.device)
             keep = np.array(nms(det_boxes, cls_scores, test_nms_thresh))
             max_conf[keep] = torch.where(cls_scores[keep] > max_conf[keep], cls_scores[keep], max_conf[keep])
         keep_boxes = torch.where(max_conf >= test_score_thresh)[0]
