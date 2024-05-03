@@ -33,6 +33,8 @@ class GetVisualEmbeddings:
         del df
 
         images, batched_inputs = self.prepare_image_inputs(self.cfg, img_list)
+        del img_list
+
         features = self.get_features(images)
         proposals = self.get_proposals(images, features)
         box_features, features_list = self.get_box_features(features, proposals)
@@ -81,7 +83,7 @@ class GetVisualEmbeddings:
 
         for image_data in df['image'].tolist():
             if image_data is not None:
-                image = np.array(Image.open(BytesIO(image_data['bytes'])))
+                image = np.array(Image.open(BytesIO(image_data['bytes'])), dtype=np.uint8)
                 img_list.append(image)
 
                 min_height = min(min_height, image.shape[0])
