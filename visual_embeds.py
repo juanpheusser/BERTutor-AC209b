@@ -199,7 +199,7 @@ class GetVisualEmbeddings:
         return boxes, scores, image_shapes
     
 
-    def get_output_boxes(boxes, batched_inputs, image_size):
+    def get_output_boxes(self, boxes, batched_inputs, image_size):
         proposal_boxes = boxes.reshape(-1, 4).clone()
         scale_x, scale_y = (batched_inputs["width"] / image_size[1], batched_inputs["height"] / image_size[0])
         output_boxes = Boxes(proposal_boxes)
