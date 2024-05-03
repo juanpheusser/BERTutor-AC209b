@@ -65,6 +65,11 @@ class GetVisualEmbeddings:
             visual_embeds = [self.get_visual_embeds(box_feature, keep_box) for box_feature, keep_box in zip(box_features, keep_boxes)]
 
             output_visual_embeddings.extend(visual_embeds)
+            
+            del boxes, scores, output_boxes, keep_boxes, max_conf, visual_embeds, temp, proposals, features, images, batched_inputs, box_features
+            gc.collect()
+            torch.cuda.empty_cache()
+
 
         return output_visual_embeddings
 
