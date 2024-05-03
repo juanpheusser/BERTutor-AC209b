@@ -6,6 +6,7 @@ import numpy as np
 from copy import deepcopy
 from PIL import Image
 from io import BytesIO
+import gc
 from detectron2.modeling import build_model
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.structures.image_list import ImageList
@@ -31,9 +32,11 @@ class GetVisualEmbeddings:
         
         img_list = self.bytes_to_images(df)
         del df
+        gc.collect()
 
         images, batched_inputs = self.prepare_image_inputs(self.cfg, img_list)
         del img_list
+        gc.collect()
 
         features = self.get_features(images)
         proposals = self.get_proposals(images, features)
@@ -42,6 +45,7 @@ class GetVisualEmbeddings:
         boxes, scores, image_shapes = self.get_box_scores(pred_class_logits, pred_proposal_deltas, proposals)
 
         del image_shapes, features_list, pred_class_logits, pred_proposal_deltas        
+        gc.collect()
         
         output_boxes = [self.get_output_boxes(boxes[i], batched_inputs[i], proposals[i].image_size) for i in range(len(proposals))]
         temp = [self.select_boxes(self.cfg, output_boxes[i], scores[i]) for i in range(len(scores))]
