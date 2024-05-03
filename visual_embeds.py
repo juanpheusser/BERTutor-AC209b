@@ -54,7 +54,7 @@ class GetVisualEmbeddings:
             gc.collect()
 
             output_boxes = [self.get_output_boxes(boxes[i], batched_inputs[i], proposals[i].image_size) for i in range(len(proposals))]
-            temp = [self.select_boxes(self.cfg, output_boxes[i], scores[i]) for i in range(len(scores))]
+            temp = [self.select_boxes(output_boxes[i], scores[i]) for i in range(len(scores))]
 
             keep_boxes, max_conf = [],[]
             for keep_box, mx_conf in temp:
