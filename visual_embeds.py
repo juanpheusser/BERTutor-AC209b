@@ -144,11 +144,12 @@ class GetVisualEmbeddings:
     
     def plot_features_random_img(self, images, features):
 
-        image_index = np.random.randint(0, len(images))
-        image = images[image_index]
+        # image = np.array(images[0])
+        # image = image.transpose(1,2,0)
+        # print(image)
 
-        plt.imshow(cv2.resize(image, (images.tensor.shape[-2:][::-1])))
-        plt.show()
+        # plt.imshow(image)
+        # plt.show()
         for key in features.keys():
             print(features[key].shape)
             plt.imshow(features[key][0,0,:,:].squeeze().to(self.model.device).detach().numpy(), cmap='jet')
@@ -223,7 +224,6 @@ class GetVisualEmbeddings:
     def filter_boxes(self, keep_boxes, max_conf, min_boxes, max_boxes):
           sorted_conf, sorted_indices = torch.sort(max_conf, descending=True)
 
-          # Select the top min_boxes or max_boxes elements
           if len(keep_boxes) < min_boxes:
               keep_boxes = sorted_indices[:min_boxes]
           elif len(keep_boxes) > max_boxes:
