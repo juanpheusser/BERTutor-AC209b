@@ -20,7 +20,7 @@ from detectron2 import model_zoo
 from detectron2.config import get_cfg
 
 
-class GetVisualEmbeddings2:
+class GetVisualEmbeddings:
     MIN_BOXES = 10
     MAX_BOXES = 100
 
