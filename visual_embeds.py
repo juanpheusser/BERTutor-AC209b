@@ -20,7 +20,7 @@ from detectron2 import model_zoo
 from detectron2.config import get_cfg
 
 
-class GetVisualEmbeddings:
+class GetVisualEmbeddings2:
     MIN_BOXES = 10
     MAX_BOXES = 100
 
@@ -29,48 +29,44 @@ class GetVisualEmbeddings:
         self.model = self.get_model(self.cfg)
 
 
-    def get_visual_embeddings(self, df, batch_size):
-
-        df['batch'] = np.arange(0, len(df)) // batch_size
-        output_visual_embeddings = []
-
-        for _, batch in tqdm(df.groupby('batch')):
+    def get_visual_embeddings(self, df, save=False, filepath=''):
             
-            img_list = self.bytes_to_images(batch)
-            del batch
-            gc.collect()
+        img_list = self.bytes_to_images(df)
+        del df
+        gc.collect()
 
-            images, batched_inputs = self.prepare_image_inputs(self.cfg, img_list)
-            del img_list
-            gc.collect()
+        images, batched_inputs = self.prepare_image_inputs(self.cfg, img_list)
+        del img_list
+        gc.collect()
 
-            features = self.get_features(images)
-            proposals = self.get_proposals(images, features)
-            box_features, features_list = self.get_box_features(features, proposals)
-            pred_class_logits, pred_proposal_deltas = self.get_prediction_logits(features_list, proposals)
-            boxes, scores, image_shapes = self.get_box_scores(pred_class_logits, pred_proposal_deltas, proposals)
+        features = self.get_features(images)
+        proposals = self.get_proposals(images, features)
+        box_features, features_list = self.get_box_features(features, proposals)
+        pred_class_logits, pred_proposal_deltas = self.get_prediction_logits(features_list, proposals)
+        boxes, scores, image_shapes = self.get_box_scores(pred_class_logits, pred_proposal_deltas, proposals)
 
-            del image_shapes, features_list, pred_class_logits, pred_proposal_deltas        
-            gc.collect()
+        del image_shapes, features_list, pred_class_logits, pred_proposal_deltas        
+        gc.collect()
 
-            output_boxes = [self.get_output_boxes(boxes[i], batched_inputs[i], proposals[i].image_size) for i in range(len(proposals))]
-            temp = [self.select_boxes(output_boxes[i], scores[i]) for i in range(len(scores))]
+        output_boxes = [self.get_output_boxes(boxes[i], batched_inputs[i], proposals[i].image_size) for i in range(len(proposals))]
+        temp = [self.select_boxes(output_boxes[i], scores[i]) for i in range(len(scores))]
 
-            keep_boxes, max_conf = [],[]
-            for keep_box, mx_conf in temp:
-                keep_boxes.append(keep_box)
-                max_conf.append(mx_conf)
+        keep_boxes, max_conf = [],[]
+        for keep_box, mx_conf in temp:
+            keep_boxes.append(keep_box)
+            max_conf.append(mx_conf)
 
-            keep_boxes = [self.filter_boxes(keep_box, mx_conf, self.MIN_BOXES, self.MAX_BOXES) for keep_box, mx_conf in zip(keep_boxes, max_conf)]
-            visual_embeds = [self.get_visual_embeds(box_feature, keep_box) for box_feature, keep_box in zip(box_features, keep_boxes)]
+        keep_boxes = [self.filter_boxes(keep_box, mx_conf, self.MIN_BOXES, self.MAX_BOXES) for keep_box, mx_conf in zip(keep_boxes, max_conf)]
+        visual_embeds = [self.get_visual_embeds(box_feature, keep_box) for box_feature, keep_box in zip(box_features, keep_boxes)]
+        
+        del boxes, scores, output_boxes, keep_boxes, max_conf, temp, proposals, features, images, batched_inputs, box_features
+        gc.collect()
+        #torch.cuda.empty_cache()
 
-            output_visual_embeddings.extend(visual_embeds)
-            
-            del boxes, scores, output_boxes, keep_boxes, max_conf, visual_embeds, temp, proposals, features, images, batched_inputs, box_features
-            gc.collect()
-            torch.cuda.empty_cache()
+        if save:
+          torch.save(visual_embeds, filepath)
 
-        return output_visual_embeddings
+        return visual_embeds
 
     def load_config_and_model_weights(self, cfg_path, cuda=True):
         cfg = get_cfg()
@@ -95,8 +91,8 @@ class GetVisualEmbeddings:
     
     def bytes_to_images(self, df):
 
-        min_height = float('inf')
-        min_width = float('inf')
+        min_height = 50
+        min_width = 50
 
         img_list = []
 
@@ -105,12 +101,9 @@ class GetVisualEmbeddings:
                 image = np.array(Image.open(BytesIO(image_data['bytes'])), dtype=np.uint8)
                 img_list.append(image)
 
-                min_height = min(min_height, image.shape[0])
-                min_width = min(min_width, image.shape[1])
-
             else:
                 img_list.append(None)
-
+        
         img_list = [img if img is not None else np.zeros((min_height, min_width, 3), dtype=np.uint8) for img in img_list]
 
         return img_list
@@ -214,24 +207,27 @@ class GetVisualEmbeddings:
         test_nms_thresh = self.cfg.MODEL.ROI_HEADS.NMS_THRESH_TEST
         cls_prob = scores.detach()
         cls_boxes = output_boxes.tensor.detach().reshape(1000,80,4)
-        max_conf = torch.zeros((cls_boxes.shape[0]))
+        max_conf = torch.zeros((cls_boxes.shape[0])).to(self.model.device)
         for cls_ind in range(0, cls_prob.shape[1]-1):
             cls_scores = cls_prob[:, cls_ind+1].to(self.model.device)
             det_boxes = cls_boxes[:,cls_ind,:].to(self.model.device)
-            keep = np.array(nms(det_boxes, cls_scores, test_nms_thresh))
+            keep = torch.tensor(nms(det_boxes, cls_scores, test_nms_thresh))
             max_conf[keep] = torch.where(cls_scores[keep] > max_conf[keep], cls_scores[keep], max_conf[keep])
         keep_boxes = torch.where(max_conf >= test_score_thresh)[0]
 
         return keep_boxes, max_conf
     
     def filter_boxes(self, keep_boxes, max_conf, min_boxes, max_boxes):
-        if len(keep_boxes) < min_boxes:
-            keep_boxes = np.argsort(max_conf).numpy()[::-1][:min_boxes]
-        elif len(keep_boxes) > max_boxes:
-            keep_boxes = np.argsort(max_conf).numpy()[::-1][:max_boxes]
-        return keep_boxes
-    
+          sorted_conf, sorted_indices = torch.sort(max_conf, descending=True)
+
+          # Select the top min_boxes or max_boxes elements
+          if len(keep_boxes) < min_boxes:
+              keep_boxes = sorted_indices[:min_boxes]
+          elif len(keep_boxes) > max_boxes:
+              keep_boxes = sorted_indices[:max_boxes]
+
+          return keep_boxes
 
     def get_visual_embeds(self, box_features, keep_boxes):
-        return box_features[keep_boxes.copy()]
+        return box_features[keep_boxes.clone()]
 
